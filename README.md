@@ -10,6 +10,7 @@ A full-featured CLI tool for discovering, auditing, and managing installed softw
   - **Version managers:** nvm, pyenv, rbenv, SDKMAN, asdf, mise, rustup
   - **Containers:** Docker images
   - **Manual installs:** /opt, /usr/local, AppImages, git clone+build, untracked binaries
+- **Owner tracking** — Run as `sudo` to see which user installed each package; run as normal user to see only your own software
 - **Parallel scanning** with caching for fast repeat runs
 - **Backup before removal** — Creates `.tar.gz` archives and Conda env specs before uninstalling
 - **Orphan detection** — Finds leftover config directories with no matching installed software
@@ -40,6 +41,12 @@ chmod +x lswmgr.sh
 ## Usage
 
 ```bash
+# Run as normal user (shows only your software)
+./lswmgr.sh
+
+# Run as root (shows all users' software with Owner column)
+sudo ./lswmgr.sh
+
 # Show top 20 largest packages
 ./lswmgr.sh --top 20
 
@@ -50,7 +57,7 @@ chmod +x lswmgr.sh
 ./lswmgr.sh --export json
 
 # Remove a package (with backup)
-./lswmgr.sh --remove torch_fix --source MANUAL --yes
+sudo ./lswmgr.sh --remove torch_fix --source MANUAL --yes
 
 # Detect orphan configs
 ./lswmgr.sh --orphans
@@ -63,7 +70,22 @@ chmod +x lswmgr.sh
 
 # Quiet mode for cron jobs
 ./lswmgr.sh --quiet --export csv > /dev/null
+
+# Force rescan (ignore cache)
+sudo ./lswmgr.sh --refresh
 ```
+
+## User vs Root Mode
+
+| Mode | Behavior |
+|------|----------|
+| `./lswmgr.sh` | Scans only your packages (pip user, pipx, cargo, go, etc.) |
+| `sudo ./lswmgr.sh` | Scans all users + system packages, shows **Owner** column |
+
+When running as root:
+- Scans every user's home directory for pip, pipx, cargo, go, nvm, pyenv, rbenv, sdkman, asdf, mise, and rustup installations
+- Detects conda even if it's not in root's PATH (searches common install locations)
+- Displays which user owns each package in the output table
 
 ## Options
 
@@ -77,12 +99,37 @@ chmod +x lswmgr.sh
 | `--export csv\|json` | Export results to file |
 | `--dry-run` | Show what would happen without executing |
 | `--remove NAME` | Non-interactive removal by name |
-| `--source SOURCE` | Specify source: APT/SNAP/FLATPAK/CONDA/MANUAL |
+| `--source SOURCE` | Specify source: APT/SNAP/FLATPAK/CONDA/PIP/PIPX/NPM/CARGO/GO/DOCKER/etc. |
 | `--yes`, `-y` | Skip confirmation prompts |
 | `--restore` | List and restore from backups |
 | `--orphans` | Detect orphan config directories |
 | `--quiet`, `-q` | No colors, no prompts (cron-friendly) |
 | `--log FILE` | Log file path |
+
+## Supported Removal Sources
+
+The tool can remove software from any detected source:
+
+| Source | Removal method |
+|--------|---------------|
+| APT | `apt remove` |
+| SNAP | `snap remove` |
+| FLATPAK | `flatpak uninstall` |
+| CONDA | `conda env remove` |
+| PIP | `pip uninstall` |
+| PIPX | `pipx uninstall` |
+| NPM | `npm uninstall -g` |
+| YARN | `yarn global remove` |
+| CARGO | `cargo uninstall` |
+| GO | Removes binary |
+| GEM | `gem uninstall` |
+| COMPOSER | `composer global remove` |
+| DOCKER | `docker rmi` |
+| NIX | `nix-env --uninstall` |
+| BREW | `brew uninstall` |
+| APPIMAGE | Removes file |
+| MANUAL/UNTRACKED/GIT | Removes file/directory (with safety checks) |
+| NVM/PYENV/RBENV/etc. | Removes version directory |
 
 ## License
 
