@@ -75,10 +75,10 @@ declare -a SW_OWNERS=()
 IS_ROOT=0
 [[ $(id -u) -eq 0 ]] && IS_ROOT=1
 
-# Get list of real users (UID >= 1000, with home dirs)
+# Get list of real users (UID >= 1000, with home dirs, excluding service accounts)
 get_real_users() {
     if [[ "$IS_ROOT" -eq 1 ]]; then
-        awk -F: '$3 >= 1000 && $3 < 65534 && $6 != "" {print $1":"$6}' /etc/passwd
+        awk -F: '$3 >= 1000 && $3 < 65534 && $6 != "" && $7 !~ /nologin|false/ {print $1":"$6}' /etc/passwd
     else
         echo "$(whoami):$HOME"
     fi
