@@ -132,6 +132,27 @@ The tool can remove software from any detected source:
 | MANUAL/UNTRACKED/GIT | Removes file/directory (with safety checks) |
 | NVM/PYENV/RBENV/etc. | Removes version directory |
 
+## Backup & Restore
+
+Before removing any software, `lswmgr.sh` offers to create a backup. The backup strategy depends on the source:
+
+| Source | What gets backed up | Restore hint |
+|--------|-------------------|--------------|
+| APT | Package info, config files from `/etc` | `sudo apt install <package>` |
+| SNAP | Snap save + package info | `sudo snap install <package>` |
+| FLATPAK | Package metadata | `flatpak install <package>` |
+| CONDA | Full env spec (YAML) + directory archive | `conda env create -f <spec.yml>` |
+| MANUAL/GIT | `.tar.gz` of the entire directory | Extract to original location |
+
+Backups are stored in `~/.local/share/lswmgr/backups/` with timestamps.
+
+To list and restore from previous backups:
+```bash
+./lswmgr.sh --restore
+```
+
+This shows all available backups and lets you pick one to restore. The tool will suggest the exact reinstall command for each package type.
+
 ## License
 
 MIT
