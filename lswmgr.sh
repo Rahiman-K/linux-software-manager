@@ -47,12 +47,12 @@
 # ============================================================
 
 VERSION="2.0.0"
-BACKUP_DIR="/data/backups/software_audit"
-CACHE_FILE="/tmp/software_audit_cache.json"
+BACKUP_DIR="${HOME}/.local/share/lswmgr/backups"
+CACHE_FILE="/tmp/lswmgr_cache.json"
 CACHE_MAX_AGE=3600  # 1 hour in seconds
-LOG_FILE="/data/projects/linux/software_audit.log"
+LOG_FILE="${HOME}/.local/share/lswmgr/lswmgr.log"
 APT_SIZE_THRESHOLD_KB=5120  # 5MB default threshold
-SCAN_DIRS=("/data/apps" "/opt")
+SCAN_DIRS=("/opt" "/usr/local" "/snap" "/var/lib/flatpak")
 
 # ============================================================
 # GLOBALS
@@ -783,7 +783,7 @@ export_results() {
 
     case "$format" in
         csv)
-            outfile="/data/projects/linux/software_audit_export.csv"
+            outfile="./software_audit_export.csv"
             {
                 echo "Name,Source,Location,Size,Size_Bytes,Last_Used,Service"
                 for ((i=0; i<count; i++)); do
@@ -792,7 +792,7 @@ export_results() {
             } > "$outfile"
             ;;
         json)
-            outfile="/data/projects/linux/software_audit_export.json"
+            outfile="./software_audit_export.json"
             save_cache  # Reuse cache format
             cp "$CACHE_FILE" "$outfile"
             ;;
@@ -968,7 +968,7 @@ restore_from_backup() {
         if [[ -z "$dest" ]]; then
             # Try to guess from filename
             if [[ "$chosen_name" == *"MANUAL"* ]]; then
-                dest="/data/apps"
+                dest="/opt"
             elif [[ "$chosen_name" == *"CONDA"* ]]; then
                 dest="$(conda info --base 2>/dev/null)/envs"
             else
