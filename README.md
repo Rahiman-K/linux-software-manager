@@ -4,7 +4,7 @@ A full-featured CLI tool for discovering, auditing, and managing installed softw
 
 ## Features
 
-- **Multi-source discovery** — Scans APT, Snap, Flatpak, Conda, and manually installed software (`/opt`, `/data/apps`)
+- **Multi-source discovery** — Scans APT, Snap, Flatpak, Conda, and manually installed software (`/opt`, `/usr/local`, `/snap`, `/var/lib/flatpak`)
 - **Parallel scanning** with caching for fast repeat runs
 - **Backup before removal** — Creates `.tar.gz` archives and Conda env specs before uninstalling
 - **Orphan detection** — Finds leftover config directories with no matching installed software
