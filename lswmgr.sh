@@ -1192,7 +1192,7 @@ display_disk_summary() {
 
     echo ""
     echo -e "${BOLD}CATEGORY TOTALS:${NC}"
-    for src in APT SNAP FLATPAK CONDA MANUAL; do
+    for src in APT SNAP FLATPAK CONDA MANUAL PIP PIPX NPM YARN CARGO GO GEM COMPOSER GIT UNTRACKED APPIMAGE DOCKER NIX BREW NVM PYENV RBENV SDKMAN ASDF MISE RUSTUP LUAROCKS; do
         if [[ -n "${cat_count[$src]}" ]]; then
             printf "  ${CYAN}%-10s${NC} %3d packages  │  %s\n" \
                 "$src" "${cat_count[$src]}" "$(bytes_to_human ${cat_bytes[$src]:-0})"
@@ -1723,7 +1723,7 @@ remove_single() {
                 fi
             fi
             ;;
-        MANUAL)
+        MANUAL|UNTRACKED|GIT)
             if [[ ! -e "$location" ]]; then
                 err "Path does not exist: $location"
                 return 1
@@ -1735,6 +1735,145 @@ remove_single() {
                     ;;
             esac
             msg "${CYAN}[*] Removing $location...${NC}"
+            if rm -rf "$location"; then
+                msg "${GREEN}[✓] Removed '$name' from $location.${NC}"
+            else
+                err "Failed to remove '$name'. Check permissions."
+                return 1
+            fi
+            ;;
+        PIP)
+            local pkg_name
+            pkg_name=$(echo "$name" | sed 's/(.*//')  # Strip version from name(version)
+            msg "${CYAN}[*] Removing via pip...${NC}"
+            if pip3 uninstall -y "$pkg_name" 2>/dev/null || pip uninstall -y "$pkg_name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$pkg_name' via pip.${NC}"
+            else
+                err "Failed to remove '$pkg_name' via pip."
+                return 1
+            fi
+            ;;
+        PIPX)
+            local pkg_name
+            pkg_name=$(echo "$name" | sed 's/(.*//')
+            msg "${CYAN}[*] Removing via pipx...${NC}"
+            if pipx uninstall "$pkg_name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$pkg_name' via pipx.${NC}"
+            else
+                err "Failed to remove '$pkg_name' via pipx."
+                return 1
+            fi
+            ;;
+        NPM)
+            local pkg_name
+            pkg_name=$(echo "$name" | sed 's/(.*//')
+            msg "${CYAN}[*] Removing via npm...${NC}"
+            if sudo npm uninstall -g "$pkg_name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$pkg_name' via npm.${NC}"
+            else
+                err "Failed to remove '$pkg_name' via npm."
+                return 1
+            fi
+            ;;
+        YARN)
+            local pkg_name
+            pkg_name=$(echo "$name" | sed 's/(.*//')
+            msg "${CYAN}[*] Removing via yarn...${NC}"
+            if yarn global remove "$pkg_name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$pkg_name' via yarn.${NC}"
+            else
+                err "Failed to remove '$pkg_name' via yarn."
+                return 1
+            fi
+            ;;
+        CARGO)
+            local pkg_name
+            pkg_name=$(echo "$name" | sed 's/(.*//')
+            msg "${CYAN}[*] Removing via cargo...${NC}"
+            if cargo uninstall "$pkg_name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$pkg_name' via cargo.${NC}"
+            else
+                err "Failed to remove '$pkg_name' via cargo."
+                return 1
+            fi
+            ;;
+        GO)
+            msg "${CYAN}[*] Removing go binary...${NC}"
+            if rm -f "$location"; then
+                msg "${GREEN}[✓] Removed '$name' from $location.${NC}"
+            else
+                err "Failed to remove '$name'."
+                return 1
+            fi
+            ;;
+        GEM)
+            local pkg_name
+            pkg_name=$(echo "$name" | sed 's/(.*//')
+            msg "${CYAN}[*] Removing via gem...${NC}"
+            if gem uninstall "$pkg_name" -x 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$pkg_name' via gem.${NC}"
+            else
+                err "Failed to remove '$pkg_name' via gem."
+                return 1
+            fi
+            ;;
+        COMPOSER)
+            local pkg_name
+            pkg_name=$(echo "$name" | sed 's/(.*//')
+            msg "${CYAN}[*] Removing via composer...${NC}"
+            if composer global remove "$pkg_name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$pkg_name' via composer.${NC}"
+            else
+                err "Failed to remove '$pkg_name' via composer."
+                return 1
+            fi
+            ;;
+        DOCKER)
+            local image_name
+            image_name=$(echo "$name" | tr ' ' ':')  # name:tag format
+            msg "${CYAN}[*] Removing docker image...${NC}"
+            if docker rmi "$image_name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed docker image '$image_name'.${NC}"
+            else
+                err "Failed to remove docker image '$image_name'. It may be in use."
+                return 1
+            fi
+            ;;
+        NIX)
+            local pkg_name
+            pkg_name=$(echo "$name" | sed 's/(.*//')
+            msg "${CYAN}[*] Removing via nix...${NC}"
+            if nix-env --uninstall "$pkg_name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$pkg_name' via nix.${NC}"
+            else
+                err "Failed to remove '$pkg_name' via nix."
+                return 1
+            fi
+            ;;
+        BREW)
+            msg "${CYAN}[*] Removing via brew...${NC}"
+            if brew uninstall "$name" 2>/dev/null; then
+                msg "${GREEN}[✓] Removed '$name' via brew.${NC}"
+            else
+                err "Failed to remove '$name' via brew."
+                return 1
+            fi
+            ;;
+        APPIMAGE)
+            msg "${CYAN}[*] Removing AppImage...${NC}"
+            if rm -f "$location"; then
+                msg "${GREEN}[✓] Removed AppImage '$name' from $location.${NC}"
+            else
+                err "Failed to remove '$name'."
+                return 1
+            fi
+            ;;
+        NVM|PYENV|RBENV|SDKMAN|ASDF|MISE|RUSTUP|LUAROCKS)
+            if [[ ! -e "$location" ]]; then
+                err "Path does not exist: $location"
+                return 1
+            fi
+            msg "${CYAN}[*] Removing $source installation at $location...${NC}"
             if rm -rf "$location"; then
                 msg "${GREEN}[✓] Removed '$name' from $location.${NC}"
             else
@@ -1848,9 +1987,32 @@ process_single_removal() {
                 "${SW_SIZES[$idx]}"
         done
         echo ""
-        read -p "Select (1-${#matches[@]}): " </dev/tty selection
+        read -p "Select (1-${#matches[@]}, comma-separated for multiple): " </dev/tty selection
 
-        if [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le ${#matches[@]} ]]; then
+        # Handle comma-separated selections
+        if [[ "$selection" == *","* ]]; then
+            local -a selected_indices=()
+            IFS=',' read -ra sel_parts <<< "$selection"
+            for s in "${sel_parts[@]}"; do
+                s=$(echo "$s" | tr -d ' ')
+                if [[ "$s" =~ ^[0-9]+$ ]] && [[ "$s" -ge 1 ]] && [[ "$s" -le ${#matches[@]} ]]; then
+                    selected_indices+=("${matches[$((s-1))]}")
+                else
+                    err "Invalid selection: $s"
+                    return 1
+                fi
+            done
+            # Remove each selected item
+            for sel_idx in "${selected_indices[@]}"; do
+                found="$sel_idx"
+                local sel_name="${SW_NAMES[$found]}"
+                local sel_source="${SW_SOURCES[$found]}"
+                local sel_location="${SW_LOCATIONS[$found]}"
+                msg "${CYAN}[*] Processing: $sel_name ($sel_source)...${NC}"
+                remove_single "$found" "$sel_name"
+            done
+            return 0
+        elif [[ "$selection" =~ ^[0-9]+$ ]] && [[ "$selection" -ge 1 ]] && [[ "$selection" -le ${#matches[@]} ]]; then
             found="${matches[$((selection-1))]}"
         else
             err "Invalid selection."
