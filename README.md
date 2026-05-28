@@ -86,6 +86,7 @@ When running as root:
 - Scans every user's home directory for pip, pipx, cargo, go, nvm, pyenv, rbenv, sdkman, asdf, mise, and rustup installations
 - Detects conda even if it's not in root's PATH (searches common install locations)
 - Displays which user owns each package in the output table
+- Automatically filters out service accounts (e.g., `libvirt-qemu`, `nobody`) — only real login users are scanned
 
 ## Options
 
