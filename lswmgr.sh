@@ -1867,31 +1867,31 @@ remove_single() {
             msg "${CYAN}[*] Removing via pip...${NC}"
 
             # Determine if it's a user package or system package
-            local pip_flags="-y"
-            if [[ "$location" == *"/.local/"* ]]; then
-                # User-installed package
-                local pkg_owner="${SW_OWNERS[$found]}"
-                if [[ "$IS_ROOT" -eq 1 && "$pkg_owner" != "system" ]]; then
-                    # Running as root, removing a user's package
-                    if sudo -u "$pkg_owner" pip3 uninstall $pip_flags "$pkg_name" 2>/dev/null; then
-                        msg "${GREEN}[✓] Removed '$pkg_name' (user: $pkg_owner) via pip.${NC}"
-                    else
-                        err "Failed to remove '$pkg_name' via pip."
-                        return 1
-                    fi
+            local pkg_owner="${SW_OWNERS[$found]}"
+
+            if [[ "$location" == *"/.local/"* && "$IS_ROOT" -eq 1 && "$pkg_owner" != "system" ]]; then
+                # Running as root, removing a user's package
+                if sudo -u "$pkg_owner" pip3 uninstall -y --break-system-packages "$pkg_name" 2>/dev/null || \
+                   sudo -u "$pkg_owner" pip3 uninstall -y "$pkg_name" 2>/dev/null; then
+                    msg "${GREEN}[✓] Removed '$pkg_name' (user: $pkg_owner) via pip.${NC}"
                 else
-                    if pip3 uninstall $pip_flags "$pkg_name" 2>/dev/null; then
-                        msg "${GREEN}[✓] Removed '$pkg_name' via pip.${NC}"
-                    else
-                        err "Failed to remove '$pkg_name' via pip."
-                        return 1
-                    fi
+                    err "Failed to remove '$pkg_name' via pip."
+                    return 1
+                fi
+            elif [[ "$location" == *"/.local/"* ]]; then
+                # Running as the user themselves
+                if pip3 uninstall -y --break-system-packages "$pkg_name" 2>/dev/null || \
+                   pip3 uninstall -y "$pkg_name" 2>/dev/null; then
+                    msg "${GREEN}[✓] Removed '$pkg_name' via pip.${NC}"
+                else
+                    err "Failed to remove '$pkg_name' via pip."
+                    return 1
                 fi
             else
-                # System package — may need --break-system-packages on newer distros
-                if pip3 uninstall $pip_flags --break-system-packages "$pkg_name" 2>/dev/null || \
-                   pip3 uninstall $pip_flags "$pkg_name" 2>/dev/null || \
-                   pip uninstall $pip_flags "$pkg_name" 2>/dev/null; then
+                # System package
+                if pip3 uninstall -y --break-system-packages "$pkg_name" 2>/dev/null || \
+                   pip3 uninstall -y "$pkg_name" 2>/dev/null || \
+                   pip uninstall -y "$pkg_name" 2>/dev/null; then
                     msg "${GREEN}[✓] Removed '$pkg_name' via pip.${NC}"
                 else
                     err "Failed to remove '$pkg_name' via pip."
