@@ -31,7 +31,8 @@
 #
 # OPTIONS:
 #   --help              Show this help
-#   --refresh           Force rescan (ignore cache)
+#   --cache             Use cached results for faster loading (default: fresh scan)
+#   --refresh           Force rescan (same as default, kept for compatibility)
 #   --all               Show all packages (no size threshold)
 #   --top N             Show only top N largest entries
 #   --filter PATTERN    Filter results by name pattern
@@ -84,7 +85,8 @@ get_real_users() {
     fi
 }
 # CLI flags
-FLAG_REFRESH=0
+FLAG_REFRESH=1
+FLAG_CACHE=0
 FLAG_ALL=0
 FLAG_TOP=0
 FLAG_FILTER=""
@@ -141,7 +143,8 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --help|-h)       FLAG_HELP=1; shift ;;
-            --refresh)       FLAG_REFRESH=1; shift ;;
+            --refresh)       FLAG_REFRESH=1; FLAG_CACHE=0; shift ;;
+            --cache)         FLAG_CACHE=1; FLAG_REFRESH=0; shift ;;
             --all)           FLAG_ALL=1; shift ;;
             --top)           FLAG_TOP=1; TOP_N="${2:-20}"; shift 2 ;;
             --filter)        FLAG_FILTER="$2"; shift 2 ;;
@@ -168,7 +171,8 @@ USAGE:
 
 OPTIONS:
   --help, -h            Show this help message
-  --refresh             Force rescan (ignore cache)
+  --cache               Use cached results for faster loading (default: fresh scan)
+  --refresh             Force rescan (same as default, kept for compatibility)
   --all                 Show all packages (disable 5MB threshold for APT)
   --top N               Show only top N largest entries
   --filter PATTERN      Filter results by name (supports regex)
@@ -1861,11 +1865,38 @@ remove_single() {
             local pkg_name
             pkg_name=$(echo "$name" | sed 's/(.*//')  # Strip version from name(version)
             msg "${CYAN}[*] Removing via pip...${NC}"
-            if pip3 uninstall -y "$pkg_name" 2>/dev/null || pip uninstall -y "$pkg_name" 2>/dev/null; then
-                msg "${GREEN}[✓] Removed '$pkg_name' via pip.${NC}"
+
+            # Determine if it's a user package or system package
+            local pip_flags="-y"
+            if [[ "$location" == *"/.local/"* ]]; then
+                # User-installed package
+                local pkg_owner="${SW_OWNERS[$found]}"
+                if [[ "$IS_ROOT" -eq 1 && "$pkg_owner" != "system" ]]; then
+                    # Running as root, removing a user's package
+                    if sudo -u "$pkg_owner" pip3 uninstall $pip_flags "$pkg_name" 2>/dev/null; then
+                        msg "${GREEN}[✓] Removed '$pkg_name' (user: $pkg_owner) via pip.${NC}"
+                    else
+                        err "Failed to remove '$pkg_name' via pip."
+                        return 1
+                    fi
+                else
+                    if pip3 uninstall $pip_flags "$pkg_name" 2>/dev/null; then
+                        msg "${GREEN}[✓] Removed '$pkg_name' via pip.${NC}"
+                    else
+                        err "Failed to remove '$pkg_name' via pip."
+                        return 1
+                    fi
+                fi
             else
-                err "Failed to remove '$pkg_name' via pip."
-                return 1
+                # System package — may need --break-system-packages on newer distros
+                if pip3 uninstall $pip_flags --break-system-packages "$pkg_name" 2>/dev/null || \
+                   pip3 uninstall $pip_flags "$pkg_name" 2>/dev/null || \
+                   pip uninstall $pip_flags "$pkg_name" 2>/dev/null; then
+                    msg "${GREEN}[✓] Removed '$pkg_name' via pip.${NC}"
+                else
+                    err "Failed to remove '$pkg_name' via pip."
+                    return 1
+                fi
             fi
             ;;
         PIPX)
@@ -2244,7 +2275,7 @@ main() {
     fi
 
     # Load data (cache or scan)
-    if [[ "$FLAG_REFRESH" -eq 0 ]] && load_cache; then
+    if [[ "$FLAG_CACHE" -eq 1 ]] && load_cache; then
         : # Loaded from cache
     else
         msg "${CYAN}[*] Running full scan (parallel)...${NC}"

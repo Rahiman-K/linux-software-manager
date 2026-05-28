@@ -71,7 +71,10 @@ sudo ./lswmgr.sh --remove torch_fix --source MANUAL --yes
 # Quiet mode for cron jobs
 ./lswmgr.sh --quiet --export csv > /dev/null
 
-# Force rescan (ignore cache)
+# Fast load from cache (skip scanning)
+./lswmgr.sh --cache
+
+# Force rescan (this is the default anyway)
 sudo ./lswmgr.sh --refresh
 ```
 
@@ -93,7 +96,8 @@ When running as root:
 | Option | Description |
 |--------|-------------|
 | `--help`, `-h` | Show help message |
-| `--refresh` | Force rescan (ignore cache) |
+| `--cache` | Use cached results for faster loading (default: fresh scan) |
+| `--refresh` | Force rescan (same as default, kept for compatibility) |
 | `--all` | Show all packages (disable 5MB threshold for APT) |
 | `--top N` | Show only top N largest entries |
 | `--filter PATTERN` | Filter results by name (supports regex) |
