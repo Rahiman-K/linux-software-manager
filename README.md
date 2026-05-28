@@ -27,7 +27,7 @@ A full-featured CLI tool for discovering, auditing, and managing installed softw
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/linux-software-manager.git
+git clone https://github.com/Rahiman-K/linux-software-manager.git
 cd linux-software-manager
 chmod +x lswmgr.sh
 ```
