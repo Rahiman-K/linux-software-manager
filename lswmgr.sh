@@ -5,7 +5,10 @@
 # ╚══════════════════════════════════════════════════════════════════════╝
 #
 # FEATURES:
-#   - Discovery: APT, SNAP, FLATPAK, CONDA, MANUAL
+#   - Discovery: APT, SNAP, FLATPAK, CONDA, PIP, PIPX, NPM, YARN,
+#                CARGO, GO, GEM, COMPOSER, DOCKER, NIX, BREW,
+#                NVM, PYENV, RBENV, SDKMAN, ASDF, MISE, RUSTUP,
+#                LUAROCKS, GIT-INSTALLED, APPIMAGE, UNTRACKED
 #   - Parallel scanning with caching
 #   - Backup before removal (.tar.gz + conda spec)
 #   - Disambiguation for duplicate names
@@ -451,6 +454,484 @@ scan_manual() {
     done
 }
 
+# ============================================================
+# MODULE 1b — EXTENDED DISCOVERY (Language & Tool Managers)
+# ============================================================
+
+scan_pip() {
+    local tmpfile="$1"
+    if ! command -v pip3 &>/dev/null && ! command -v pip &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning PIP packages...${NC}"
+
+    local pip_cmd="pip3"
+    command -v pip3 &>/dev/null || pip_cmd="pip"
+
+    while IFS= read -r line; do
+        local name version location
+        name=$(echo "$line" | awk '{print $1}')
+        version=$(echo "$line" | awk '{print $2}')
+        [[ -z "$name" || "$name" == "Package" || "$name" == "---"* ]] && continue
+
+        # Get install location
+        location=$($pip_cmd show "$name" 2>/dev/null | grep "^Location:" | awk '{print $2}')
+        [[ -z "$location" ]] && location="SYSTEM"
+
+        # Estimate size from package directory
+        local size="0K" size_bytes=0
+        if [[ -d "$location/$name" ]]; then
+            size=$(du -sh "$location/$name" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        elif [[ -d "$location/${name//-/_}" ]]; then
+            size=$(du -sh "$location/${name//-/_}" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        fi
+
+        echo "${name}(${version})|PIP|${location}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+    done < <($pip_cmd list 2>/dev/null | tail -n +3)
+}
+
+scan_pipx() {
+    local tmpfile="$1"
+    if ! command -v pipx &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning PIPX packages...${NC}"
+
+    while IFS= read -r line; do
+        local name
+        name=$(echo "$line" | sed 's/^ *//' | awk '{print $1}')
+        [[ -z "$name" || "$name" == "venvs" || "$name" == "apps" ]] && continue
+
+        local location="$HOME/.local/pipx/venvs/$name"
+        local size="0K" size_bytes=0
+        if [[ -d "$location" ]]; then
+            size=$(du -sh "$location" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        fi
+        local last_used
+        last_used=$(get_last_used "$location")
+
+        echo "${name}|PIPX|${location}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+    done < <(pipx list --short 2>/dev/null)
+}
+
+scan_npm() {
+    local tmpfile="$1"
+    if ! command -v npm &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning NPM global packages...${NC}"
+
+    local npm_root
+    npm_root=$(npm root -g 2>/dev/null)
+
+    while IFS= read -r line; do
+        local name
+        name=$(echo "$line" | sed 's/.*── //' | cut -d@ -f1)
+        [[ -z "$name" || "$name" == "$npm_root"* ]] && continue
+
+        local location="${npm_root}/${name}"
+        local size="0K" size_bytes=0
+        if [[ -d "$location" ]]; then
+            size=$(du -sh "$location" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        fi
+
+        echo "${name}|NPM|${location}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+    done < <(npm list -g --depth=0 2>/dev/null | tail -n +2)
+}
+
+scan_yarn() {
+    local tmpfile="$1"
+    if ! command -v yarn &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning YARN global packages...${NC}"
+
+    local yarn_dir
+    yarn_dir=$(yarn global dir 2>/dev/null)/node_modules
+
+    while IFS= read -r line; do
+        local name
+        name=$(echo "$line" | sed 's/.*── //' | cut -d@ -f1)
+        [[ -z "$name" ]] && continue
+
+        local location="${yarn_dir}/${name}"
+        local size="0K" size_bytes=0
+        if [[ -d "$location" ]]; then
+            size=$(du -sh "$location" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        fi
+
+        echo "${name}|YARN|${location}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+    done < <(yarn global list --depth=0 2>/dev/null | grep "^info" | grep -v "^info \"" | sed 's/info "//' | sed 's/"//')
+}
+
+scan_cargo() {
+    local tmpfile="$1"
+    if ! command -v cargo &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning CARGO (Rust) packages...${NC}"
+
+    local cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+
+    while IFS= read -r line; do
+        local name version
+        name=$(echo "$line" | awk '{print $1}')
+        version=$(echo "$line" | grep -o 'v[0-9.]*')
+        [[ -z "$name" || "$name" == *":"* ]] && continue
+
+        local location="${cargo_bin}/${name}"
+        local size="0K" size_bytes=0
+        if [[ -f "$location" ]]; then
+            size=$(du -sh "$location" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        fi
+        local last_used
+        last_used=$(get_last_used "$location")
+
+        echo "${name}(${version})|CARGO|${location}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+    done < <(cargo install --list 2>/dev/null | grep -v "^ ")
+}
+
+scan_go() {
+    local tmpfile="$1"
+    local gobin="${GOBIN:-${GOPATH:-$HOME/go}/bin}"
+    if [[ ! -d "$gobin" ]]; then return; fi
+    msg "${CYAN}[*] Scanning GO binaries...${NC}"
+
+    for binary in "$gobin"/*; do
+        [[ -f "$binary" ]] || continue
+        local name
+        name=$(basename "$binary")
+
+        local size
+        size=$(du -sh "$binary" 2>/dev/null | awk '{print $1}')
+        local size_bytes
+        size_bytes=$(size_to_bytes "$size")
+        local last_used
+        last_used=$(get_last_used "$binary")
+
+        echo "${name}|GO|${binary}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+    done
+}
+
+scan_gem() {
+    local tmpfile="$1"
+    if ! command -v gem &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning GEM (Ruby) packages...${NC}"
+
+    while IFS= read -r line; do
+        local name
+        name=$(echo "$line" | sed 's/ (.*//')
+        [[ -z "$name" ]] && continue
+
+        local gem_dir
+        gem_dir=$(gem environment gemdir 2>/dev/null)/gems/$name*
+        local location
+        location=$(ls -d $gem_dir 2>/dev/null | head -1)
+        [[ -z "$location" ]] && location="SYSTEM"
+
+        local size="0K" size_bytes=0
+        if [[ -d "$location" ]]; then
+            size=$(du -sh "$location" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        fi
+
+        echo "${name}|GEM|${location}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+    done < <(gem list --local 2>/dev/null | grep -v "^$" | grep -v "^\*\*\*")
+}
+
+scan_composer() {
+    local tmpfile="$1"
+    if ! command -v composer &>/dev/null; then return; fi
+    local composer_dir="${COMPOSER_HOME:-$HOME/.config/composer}"
+    [[ ! -d "$composer_dir/vendor" ]] && return
+    msg "${CYAN}[*] Scanning COMPOSER (PHP) global packages...${NC}"
+
+    while IFS= read -r line; do
+        local name version
+        name=$(echo "$line" | awk '{print $1}')
+        version=$(echo "$line" | awk '{print $2}')
+        [[ -z "$name" ]] && continue
+
+        local location="$composer_dir/vendor/$name"
+        local size="0K" size_bytes=0
+        if [[ -d "$location" ]]; then
+            size=$(du -sh "$location" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        fi
+
+        echo "${name}(${version})|COMPOSER|${location}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+    done < <(composer global show 2>/dev/null | awk '{print $1, $2}')
+}
+
+scan_git_installed() {
+    local tmpfile="$1"
+    msg "${CYAN}[*] Scanning GIT-installed software...${NC}"
+
+    # Find git repos that look like installed software (have Makefile, setup.py, CMakeLists, etc.)
+    local search_dirs=("/usr/local/src" "/opt" "$HOME/src" "$HOME/builds" "$HOME/.local/src")
+
+    for dir in "${search_dirs[@]}"; do
+        [[ ! -d "$dir" ]] && continue
+        while IFS= read -r gitdir; do
+            local repo_dir
+            repo_dir=$(dirname "$gitdir")
+            local name
+            name=$(basename "$repo_dir")
+
+            # Check if it has build files (indicates it's software, not just a random repo)
+            if find "$repo_dir" -maxdepth 1 \( -name "Makefile" -o -name "setup.py" -o -name "CMakeLists.txt" -o -name "Cargo.toml" -o -name "configure" -o -name "meson.build" -o -name "go.mod" \) 2>/dev/null | grep -q .; then
+                local size
+                size=$(du -sh "$repo_dir" 2>/dev/null | awk '{print $1}')
+                local size_bytes
+                size_bytes=$(size_to_bytes "$size")
+                local last_used
+                last_used=$(get_last_used "$repo_dir")
+
+                echo "${name}|GIT|${repo_dir}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+            fi
+        done < <(find "$dir" -maxdepth 3 -name ".git" -type d 2>/dev/null)
+    done
+
+    # Also detect: files in /usr/local/bin NOT owned by any package
+    if command -v dpkg &>/dev/null; then
+        for f in /usr/local/bin/*; do
+            [[ -f "$f" ]] || continue
+            if ! dpkg -S "$f" &>/dev/null; then
+                local name
+                name=$(basename "$f")
+                local size
+                size=$(du -sh "$f" 2>/dev/null | awk '{print $1}')
+                local size_bytes
+                size_bytes=$(size_to_bytes "$size")
+                local last_used
+                last_used=$(get_last_used "$f")
+
+                echo "${name}|UNTRACKED|/usr/local/bin/${name}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+            fi
+        done
+    fi
+}
+
+scan_appimage() {
+    local tmpfile="$1"
+    msg "${CYAN}[*] Scanning AppImage files...${NC}"
+
+    local search_dirs=("$HOME" "$HOME/Applications" "$HOME/Downloads" "/opt" "/usr/local/bin")
+
+    for dir in "${search_dirs[@]}"; do
+        [[ ! -d "$dir" ]] && continue
+        while IFS= read -r appimage; do
+            local name
+            name=$(basename "$appimage")
+            local size
+            size=$(du -sh "$appimage" 2>/dev/null | awk '{print $1}')
+            local size_bytes
+            size_bytes=$(size_to_bytes "$appimage")
+            size_bytes=$(size_to_bytes "$size")
+            local last_used
+            last_used=$(get_last_used "$appimage")
+
+            echo "${name}|APPIMAGE|${appimage}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+        done < <(find "$dir" -maxdepth 2 -name "*.AppImage" -type f 2>/dev/null)
+    done
+}
+
+scan_docker() {
+    local tmpfile="$1"
+    if ! command -v docker &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning DOCKER images...${NC}"
+
+    while IFS= read -r line; do
+        local name tag size
+        name=$(echo "$line" | awk '{print $1}')
+        tag=$(echo "$line" | awk '{print $2}')
+        size=$(echo "$line" | awk '{print $(NF-1) $NF}')
+        [[ -z "$name" || "$name" == "REPOSITORY" ]] && continue
+
+        local size_bytes
+        size_bytes=$(size_to_bytes "$size")
+
+        echo "${name}:${tag}|DOCKER|docker-images|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+    done < <(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" 2>/dev/null)
+}
+
+scan_nix() {
+    local tmpfile="$1"
+    if ! command -v nix-env &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning NIX packages...${NC}"
+
+    while IFS= read -r line; do
+        local name
+        name=$(echo "$line" | sed 's/^[^ ]* //')
+        [[ -z "$name" ]] && continue
+
+        echo "${name}|NIX|nix-store|0K|0|N/A|-" >> "$tmpfile"
+    done < <(nix-env --query 2>/dev/null)
+}
+
+scan_brew() {
+    local tmpfile="$1"
+    if ! command -v brew &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning HOMEBREW (Linuxbrew) packages...${NC}"
+
+    local brew_prefix
+    brew_prefix=$(brew --prefix 2>/dev/null)
+
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+
+        local location="${brew_prefix}/Cellar/${name}"
+        local size="0K" size_bytes=0
+        if [[ -d "$location" ]]; then
+            size=$(du -sh "$location" 2>/dev/null | awk '{print $1}')
+            size_bytes=$(size_to_bytes "$size")
+        fi
+        local last_used
+        last_used=$(get_last_used "$location")
+
+        echo "${name}|BREW|${location}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+    done < <(brew list 2>/dev/null)
+}
+
+scan_version_managers() {
+    local tmpfile="$1"
+    msg "${CYAN}[*] Scanning version managers (nvm/pyenv/rbenv/sdkman/asdf)...${NC}"
+
+    # NVM (Node versions)
+    local nvm_dir="${NVM_DIR:-$HOME/.nvm}/versions/node"
+    if [[ -d "$nvm_dir" ]]; then
+        for ver in "$nvm_dir"/*/; do
+            [[ -d "$ver" ]] || continue
+            local name="node-$(basename "$ver")"
+            local size
+            size=$(du -sh "$ver" 2>/dev/null | awk '{print $1}')
+            local size_bytes
+            size_bytes=$(size_to_bytes "$size")
+            local last_used
+            last_used=$(get_last_used "$ver")
+            echo "${name}|NVM|${ver}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+        done
+    fi
+
+    # Pyenv
+    local pyenv_dir="${PYENV_ROOT:-$HOME/.pyenv}/versions"
+    if [[ -d "$pyenv_dir" ]]; then
+        for ver in "$pyenv_dir"/*/; do
+            [[ -d "$ver" ]] || continue
+            local name="python-$(basename "$ver")"
+            local size
+            size=$(du -sh "$ver" 2>/dev/null | awk '{print $1}')
+            local size_bytes
+            size_bytes=$(size_to_bytes "$size")
+            local last_used
+            last_used=$(get_last_used "$ver")
+            echo "${name}|PYENV|${ver}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+        done
+    fi
+
+    # Rbenv
+    local rbenv_dir="${RBENV_ROOT:-$HOME/.rbenv}/versions"
+    if [[ -d "$rbenv_dir" ]]; then
+        for ver in "$rbenv_dir"/*/; do
+            [[ -d "$ver" ]] || continue
+            local name="ruby-$(basename "$ver")"
+            local size
+            size=$(du -sh "$ver" 2>/dev/null | awk '{print $1}')
+            local size_bytes
+            size_bytes=$(size_to_bytes "$size")
+            local last_used
+            last_used=$(get_last_used "$ver")
+            echo "${name}|RBENV|${ver}|${size}|${size_bytes}|${last_used}|-" >> "$tmpfile"
+        done
+    fi
+
+    # SDKMAN (Java, Kotlin, Gradle, etc.)
+    local sdk_dir="${SDKMAN_DIR:-$HOME/.sdkman}/candidates"
+    if [[ -d "$sdk_dir" ]]; then
+        for candidate in "$sdk_dir"/*/; do
+            [[ -d "$candidate" ]] || continue
+            local cname
+            cname=$(basename "$candidate")
+            for ver in "$candidate"*/; do
+                [[ -d "$ver" ]] || continue
+                [[ "$(basename "$ver")" == "current" ]] && continue
+                local name="${cname}-$(basename "$ver")"
+                local size
+                size=$(du -sh "$ver" 2>/dev/null | awk '{print $1}')
+                local size_bytes
+                size_bytes=$(size_to_bytes "$size")
+                echo "${name}|SDKMAN|${ver}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+            done
+        done
+    fi
+
+    # asdf
+    local asdf_dir="${ASDF_DATA_DIR:-$HOME/.asdf}/installs"
+    if [[ -d "$asdf_dir" ]]; then
+        for plugin in "$asdf_dir"/*/; do
+            [[ -d "$plugin" ]] || continue
+            local pname
+            pname=$(basename "$plugin")
+            for ver in "$plugin"*/; do
+                [[ -d "$ver" ]] || continue
+                local name="${pname}-$(basename "$ver")"
+                local size
+                size=$(du -sh "$ver" 2>/dev/null | awk '{print $1}')
+                local size_bytes
+                size_bytes=$(size_to_bytes "$size")
+                echo "${name}|ASDF|${ver}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+            done
+        done
+    fi
+
+    # Rustup toolchains
+    if command -v rustup &>/dev/null; then
+        local rustup_dir="${RUSTUP_HOME:-$HOME/.rustup}/toolchains"
+        if [[ -d "$rustup_dir" ]]; then
+            for tc in "$rustup_dir"/*/; do
+                [[ -d "$tc" ]] || continue
+                local name="rust-$(basename "$tc")"
+                local size
+                size=$(du -sh "$tc" 2>/dev/null | awk '{print $1}')
+                local size_bytes
+                size_bytes=$(size_to_bytes "$size")
+                echo "${name}|RUSTUP|${tc}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+            done
+        fi
+    fi
+
+    # mise (formerly rtx)
+    if command -v mise &>/dev/null; then
+        local mise_dir="${MISE_DATA_DIR:-$HOME/.local/share/mise}/installs"
+        if [[ -d "$mise_dir" ]]; then
+            for plugin in "$mise_dir"/*/; do
+                [[ -d "$plugin" ]] || continue
+                local pname
+                pname=$(basename "$plugin")
+                for ver in "$plugin"*/; do
+                    [[ -d "$ver" ]] || continue
+                    local name="${pname}-$(basename "$ver")"
+                    local size
+                    size=$(du -sh "$ver" 2>/dev/null | awk '{print $1}')
+                    local size_bytes
+                    size_bytes=$(size_to_bytes "$size")
+                    echo "${name}|MISE|${ver}|${size}|${size_bytes}|N/A|-" >> "$tmpfile"
+                done
+            done
+        fi
+    fi
+}
+
+scan_luarocks() {
+    local tmpfile="$1"
+    if ! command -v luarocks &>/dev/null; then return; fi
+    msg "${CYAN}[*] Scanning LUAROCKS packages...${NC}"
+
+    while IFS= read -r line; do
+        local name
+        name=$(echo "$line" | awk '{print $1}')
+        [[ -z "$name" || "$name" == "---"* || "$name" == "Rocks" ]] && continue
+
+        echo "${name}|LUAROCKS|luarocks|0K|0|N/A|-" >> "$tmpfile"
+    done < <(luarocks list --porcelain 2>/dev/null)
+}
+
 # Run all scanners in parallel
 run_parallel_scan() {
     local tmp_apt=$(mktemp)
@@ -458,24 +939,53 @@ run_parallel_scan() {
     local tmp_flatpak=$(mktemp)
     local tmp_conda=$(mktemp)
     local tmp_manual=$(mktemp)
+    local tmp_pip=$(mktemp)
+    local tmp_pipx=$(mktemp)
+    local tmp_npm=$(mktemp)
+    local tmp_yarn=$(mktemp)
+    local tmp_cargo=$(mktemp)
+    local tmp_go=$(mktemp)
+    local tmp_gem=$(mktemp)
+    local tmp_composer=$(mktemp)
+    local tmp_git=$(mktemp)
+    local tmp_appimage=$(mktemp)
+    local tmp_docker=$(mktemp)
+    local tmp_nix=$(mktemp)
+    local tmp_brew=$(mktemp)
+    local tmp_vermgr=$(mktemp)
+    local tmp_luarocks=$(mktemp)
 
+    # Launch all scanners in parallel
     scan_apt "$tmp_apt" &
-    local pid_apt=$!
     scan_snap "$tmp_snap" &
-    local pid_snap=$!
     scan_flatpak "$tmp_flatpak" &
-    local pid_flatpak=$!
     scan_conda "$tmp_conda" &
-    local pid_conda=$!
     scan_manual "$tmp_manual" &
-    local pid_manual=$!
+    scan_pip "$tmp_pip" &
+    scan_pipx "$tmp_pipx" &
+    scan_npm "$tmp_npm" &
+    scan_yarn "$tmp_yarn" &
+    scan_cargo "$tmp_cargo" &
+    scan_go "$tmp_go" &
+    scan_gem "$tmp_gem" &
+    scan_composer "$tmp_composer" &
+    scan_git_installed "$tmp_git" &
+    scan_appimage "$tmp_appimage" &
+    scan_docker "$tmp_docker" &
+    scan_nix "$tmp_nix" &
+    scan_brew "$tmp_brew" &
+    scan_version_managers "$tmp_vermgr" &
+    scan_luarocks "$tmp_luarocks" &
 
     # Wait for all
-    wait $pid_apt $pid_snap $pid_flatpak $pid_conda $pid_manual
+    wait
 
     # Load results into arrays
     local tmpfile
-    for tmpfile in "$tmp_apt" "$tmp_snap" "$tmp_flatpak" "$tmp_conda" "$tmp_manual"; do
+    for tmpfile in "$tmp_apt" "$tmp_snap" "$tmp_flatpak" "$tmp_conda" "$tmp_manual" \
+                   "$tmp_pip" "$tmp_pipx" "$tmp_npm" "$tmp_yarn" "$tmp_cargo" \
+                   "$tmp_go" "$tmp_gem" "$tmp_composer" "$tmp_git" "$tmp_appimage" \
+                   "$tmp_docker" "$tmp_nix" "$tmp_brew" "$tmp_vermgr" "$tmp_luarocks"; do
         while IFS='|' read -r name source location size size_bytes last_used service; do
             [[ -z "$name" ]] && continue
             add_entry "$name" "$source" "$location" "$size" "$size_bytes" "$last_used" "$service"

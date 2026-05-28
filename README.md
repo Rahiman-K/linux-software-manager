@@ -4,7 +4,12 @@ A full-featured CLI tool for discovering, auditing, and managing installed softw
 
 ## Features
 
-- **Multi-source discovery** — Scans APT, Snap, Flatpak, Conda, and manually installed software (`/opt`, `/usr/local`, `/snap`, `/var/lib/flatpak`)
+- **Multi-source discovery** — Scans 20+ installation methods:
+  - **System packages:** APT, Snap, Flatpak, Nix, Homebrew (Linuxbrew)
+  - **Language packages:** pip/pip3, pipx, npm, yarn, cargo (Rust), go, gem (Ruby), composer (PHP), LuaRocks
+  - **Version managers:** nvm, pyenv, rbenv, SDKMAN, asdf, mise, rustup
+  - **Containers:** Docker images
+  - **Manual installs:** /opt, /usr/local, AppImages, git clone+build, untracked binaries
 - **Parallel scanning** with caching for fast repeat runs
 - **Backup before removal** — Creates `.tar.gz` archives and Conda env specs before uninstalling
 - **Orphan detection** — Finds leftover config directories with no matching installed software
