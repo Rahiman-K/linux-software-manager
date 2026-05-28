@@ -1,6 +1,6 @@
 #!/bin/bash
 # ╔══════════════════════════════════════════════════════════════════════╗
-# ║          SOFTWARE AUDIT & REMOVAL ENGINE — VERSION 2.0              ║
+# ║          LINUX SOFTWARE MANAGER (lswmgr) — VERSION 2.0              ║
 # ║  Full-featured software management with backup, cache, and TUI      ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 #
@@ -27,7 +27,7 @@
 #   - Disk summary with category totals
 #
 # USAGE:
-#   ./software_audit_v2.sh [OPTIONS]
+#   ./lswmgr.sh [OPTIONS]
 #
 # OPTIONS:
 #   --help              Show this help
@@ -44,7 +44,7 @@
 #   --restore           List and restore from backups
 #   --orphans           Scan for orphan config directories
 #   --quiet             No colors, no prompts (cron-friendly)
-#   --log FILE          Log actions to file (default: software_audit.log)
+#   --log FILE          Log actions to file (default: lswmgr.log)
 
 # ============================================================
 # CONFIGURATION
@@ -164,10 +164,10 @@ parse_args() {
 
 show_help() {
     cat << 'EOF'
-SOFTWARE AUDIT & REMOVAL ENGINE v2.0
+LINUX SOFTWARE MANAGER (lswmgr) v2.0
 
 USAGE:
-  ./software_audit_v2.sh [OPTIONS]
+  ./lswmgr.sh [OPTIONS]
 
 OPTIONS:
   --help, -h            Show this help message
@@ -184,16 +184,16 @@ OPTIONS:
   --restore             List and restore from backups
   --orphans             Detect orphan config directories
   --quiet, -q           No colors, no prompts (cron-friendly)
-  --log FILE            Log file path (default: software_audit.log)
+  --log FILE            Log file path (default: lswmgr.log)
 
 EXAMPLES:
-  ./software_audit_v2.sh --top 20
-  ./software_audit_v2.sh --filter "torch"
-  ./software_audit_v2.sh --remove torch_fix --source MANUAL --yes
-  ./software_audit_v2.sh --export json
-  ./software_audit_v2.sh --orphans
-  ./software_audit_v2.sh --restore
-  ./software_audit_v2.sh --quiet --export csv > /dev/null
+  ./lswmgr.sh --top 20
+  ./lswmgr.sh --filter "torch"
+  ./lswmgr.sh --remove torch_fix --source MANUAL --yes
+  ./lswmgr.sh --export json
+  ./lswmgr.sh --orphans
+  ./lswmgr.sh --restore
+  ./lswmgr.sh --quiet --export csv > /dev/null
 
 EOF
     exit 0
@@ -816,7 +816,6 @@ scan_appimage() {
             local size
             size=$(du -sh "$appimage" 2>/dev/null | awk '{print $1}')
             local size_bytes
-            size_bytes=$(size_to_bytes "$appimage")
             size_bytes=$(size_to_bytes "$size")
             local last_used
             last_used=$(get_last_used "$appimage")
@@ -1412,7 +1411,7 @@ export_results() {
 
     case "$format" in
         csv)
-            outfile="./software_audit_export.csv"
+            outfile="./lswmgr_export.csv"
             {
                 echo "Name,Source,Location,Size,Size_Bytes,Last_Used,Service,Owner"
                 for ((i=0; i<count; i++)); do
@@ -1421,7 +1420,7 @@ export_results() {
             } > "$outfile"
             ;;
         json)
-            outfile="./software_audit_export.json"
+            outfile="./lswmgr_export.json"
             save_cache  # Reuse cache format
             cp "$CACHE_FILE" "$outfile"
             ;;
@@ -2231,7 +2230,7 @@ tui_dialog() {
     done
 
     local selected
-    selected=$(dialog --checklist "Software Audit - Select to Remove" 30 80 20 "${items[@]}" 2>&1 >/dev/tty)
+    selected=$(dialog --checklist "lswmgr - Select to Remove" 30 80 20 "${items[@]}" 2>&1 >/dev/tty)
 
     clear
 
@@ -2269,7 +2268,7 @@ main() {
     # Banner
     if [[ "$FLAG_QUIET" -eq 0 ]]; then
         echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${GREEN}║     SOFTWARE AUDIT & REMOVAL ENGINE v${VERSION}                  ║${NC}"
+        echo -e "${GREEN}║     LINUX SOFTWARE MANAGER (lswmgr) v${VERSION}                  ║${NC}"
         echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
         echo ""
     fi
